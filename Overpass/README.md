@@ -1,3 +1,0 @@
-# Overpass — Writeups
-
-- [qualification](qualification/)

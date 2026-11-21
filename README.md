@@ -1,3 +1,0 @@
-# Writeups
-
-- [Overpass](Overpass/)
