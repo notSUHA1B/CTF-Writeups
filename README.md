@@ -1,3 +1,7 @@
+# CTF Writeups
+
+A collection of CTF challenges I've solved or authored, with detailed writeups covering the methodology and solution. This includes competitions I've participated in as a player, as well as CTFs where I contributed as a challenge author.
+
 ### Authored
 
 **ZUCTFv2 — Crypto & Misc Author @ 2025**  
