@@ -1,6 +1,6 @@
 # Parallax — Writeup
 
-**CTF:** Overpass · **Round:** Qualification · **Category:** Crypto · **Difficulty:** Insane
+**CTF:** Overpass · **Round:** Qualification · **Category:** Crypto · **Difficulty:** Medium
 **Flag:** dynamic (differs per instance, format `OVERPASS{...}`)
 **Solver:** [`solve.py`](solve.py)
 
