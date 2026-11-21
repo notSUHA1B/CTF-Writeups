@@ -1,7 +1,7 @@
 # Trust Me Bro — Writeup
 
 **CTF:** Overpass · **Round:** Qualification · **Category:** Crypto · **Difficulty:** Insane
-**Flag:** `OVERPASS{th3_0r4cl3_l13s_but_truth_l34ks}`
+**Flag:** dynamic (differs per instance, format `OVERPASS{...}`)
 **Solver:** [`solve.py`](solve.py)
 
 ---
@@ -111,7 +111,7 @@ inversion mask learned from 336 queries: 8 of 16 classes inverted
 round 0: 6492 queries, 1603 uncertain bits
 round 1: 8516 queries, 664 uncertain bits
 m verified after 10086 queries
-OVERPASS{th3_0r4cl3_l13s_but_truth_l34ks}
+OVERPASS{...}   <- dynamic flag, redacted
 ```
 
 ## 7. Usage
