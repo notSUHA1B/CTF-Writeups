@@ -37,12 +37,6 @@ Why it is hard:
 3. The lie is **not uniform**: it depends on `q mod 16`, with a hidden mask of "inverted" residue classes.
 4. The budget (12000) is only about 5.8 queries per bit, so the queries must be spent carefully.
 
-### الشرح بالعربي
-
-الخدمة عبارة عن RSA parity oracle: نرسل ciphertext فترجع لنا بت واحد فقط (زوجي/فردي للنص الأصلي بعد فك التشفير).
-المشكلة أن الخدمة **تكذب**: تعكس الإجابة أحياناً (حوالي 15%)، والكذب ثابت لنفس الـ ciphertext (يعني ما ينفع نعيد السؤال ونأخذ الأغلبية)، وكمان الكذب يعتمد على `q mod 16`.
-عندنا 12000 سؤال فقط، فالحل أننا نطلب أسئلة مختلفة تعطي معلومات عن نفس البتات (مثل شفرة تصحيح أخطاء)، ثم نفك الشفرة إحصائياً ونطلع `m`، ومنه نفك الفلاج.
-
 ---
 
 ## 2. Step 1 — Reduce the oracle to bits of `m/n`
