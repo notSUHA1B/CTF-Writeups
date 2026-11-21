@@ -1,26 +1,12 @@
 #!/usr/bin/env python3
-"""Reference solver for HOLLOW VIGIL.   python3 solve.py HOST PORT
-
-1. ledger : SHARE r c = <coef(r,c), s> + R[r] + C[c] + D[(a*r+b*c) mod 16]  (mod 65537).  Collect the whole
-            budget (76 cells), try every odd (a,b); the right one gives a consistent system whose solution
-            pins s (24 words).
-2. cipher : 10-round Feistel with independent hash-derived round keys.  FAULT r pt XORs a random
-            byte pattern into the right half at round r.  Starting from round 10, peel the known later
-            rounds off both ciphertexts; then L_r (the unpeeled right half) is visible in clean and faulty form,
-            so  Linv(dR) = S(a^k) ^ S(a'^k)  bytewise.  Keep pairs whose active-byte support matches,
-            vote on key bytes, move to the previous round.
-3. gate   : mac_key = HKDF-SHA256(salt = SHA256(s as 24 BE words), ikm = rk1||..||rk10, info = "vigil/mac/v2").
-"""
 import hashlib, hmac, os, random, re, socket, sys
 
-# ---------------- public part of the relay (from challenge.py) ----------------
 
 P = 65537
 N = 24
 
 
 def coef(r, c):
-    """public coefficient vector of ledger cell (r, c)"""
     return [int.from_bytes(hashlib.sha256(b"vigil/a|%d|%d|%d" % (r, c, i)).digest()[:8], "big") % P for i in range(N)]
 
 M64 = (1 << 64) - 1
@@ -28,7 +14,7 @@ ROUNDS = 10
 
 
 def _sbox():
-    # the published AES S-box
+
     def mul(a, b):
         r = 0
         while b:
@@ -47,7 +33,7 @@ def _sbox():
 
 
 SBOX = _sbox()
-PERM = [0, 5, 2, 7, 4, 1, 6, 3]          # byte transposition applied after the S-box layer
+PERM = [0, 5, 2, 7, 4, 1, 6, 3]
 
 
 def xtime(a):
@@ -63,11 +49,10 @@ def mix_col(c):
 
 
 def F(r, k):
-    """round function on a 64-bit half"""
     x = (r ^ k).to_bytes(8, "big")
     y = [SBOX[b] for b in x]
     y = [y[PERM[i]] for i in range(8)]
-    z = mix_col(y[:4]) + mix_col(y[4:])          # AES MixColumns on both 4-byte columns
+    z = mix_col(y[:4]) + mix_col(y[4:])
     return int.from_bytes(bytes(z), "big")
 
 
@@ -77,7 +62,6 @@ def encrypt(pt, round_keys):
         L, R = R, L ^ F(R, k)
     return (L << 64) | R
 
-# ---------------- solver ----------------
 
 P, N, G = 65537, 24, 16
 FAULT_CAP = int(os.environ.get('VIGIL_CAP', '950'))
@@ -104,7 +88,6 @@ INVMC = [[14, 11, 13, 9], [9, 14, 11, 13], [13, 9, 14, 11], [11, 13, 9, 14]]
 
 
 def linv(z):
-    """inverse of  (permute, MixColumns x2)  on a 64-bit value -> bytes before the permutation"""
     b = z.to_bytes(8, "big")
     y = []
     for half in (b[:4], b[4:]):
@@ -112,7 +95,7 @@ def linv(z):
     out = [0] * 8
     for i in range(8):
         out[PERM[i]] = y[i]
-    return out            # bytes of S(x)
+    return out
 
 
 def hkdf(salt, ikm, info, ln=32):
@@ -126,7 +109,6 @@ def hkdf(salt, ikm, info, ln=32):
 
 
 def solve_linear(rows, ncols):
-    """rows: list of (coeff list, rhs) mod P.  returns (consistent, solution dict for determined cols)"""
     A = [r[0][:] + [r[1]] for r in rows]
     piv, ri = [], 0
     for c in range(ncols):
@@ -156,7 +138,6 @@ PROMPTS = ("\n  \u203a ".encode(), b"\n  > ")
 
 
 def read_banner(f):
-    """read the connect banner + plain data lines up to the first prompt (printed without newline)"""
     buf = b""
     while not _ANSI.sub(b"", buf).endswith(PROMPTS):
         ch = f.read(1)
@@ -167,7 +148,6 @@ def read_banner(f):
 
 
 def clean(line):
-    """strip the prompt prefix that precedes a reply on the same line"""
     line = re.sub(r"\x1b\[[0-9;]*m", "", line)
     return re.sub(r"^(\s*[\u203a>]\s*)+", "", line.strip()).strip()
 

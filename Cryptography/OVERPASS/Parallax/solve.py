@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""Reference solver for PARALLAX.   python3 solve.py HOST PORT   (needs fpylll, pycryptodome)
-
-Model: every SIGN answers with t = g^k, s1 = k + c1*x (full) and the top 6 bits of s2 = k + c2*y
-(c1, c2 are the public hash challenges of the two reports).  Eliminating the shared nonce,
-    s2 - s1 = -c1*x + c2*y  (mod p),   with only the top 6 bits of s2 known,
-which is a two-unknown hidden-number problem.  110 samples carry 660 bits for 512 unknown bits:
-LLL fails, BKZ-20 usually fails, BKZ with block size 30-40 recovers (x, y); public keys X, Y verify the result.
-"""
 import hashlib, os, random, re, socket, sys, time
 from fpylll import BKZ, IntegerMatrix, LLL, Pruning
 from fpylll.fplll.bkz_param import Strategy
@@ -20,7 +12,6 @@ PROMPTS = ("\n  \u203a ".encode(), b"\n  > ")
 
 
 def read_banner(f):
-    """read the connect banner + plain data lines up to the first prompt (printed without newline)"""
     buf = b""
     while not _ANSI.sub(b"", buf).endswith(PROMPTS):
         ch = f.read(1)
@@ -31,7 +22,6 @@ def read_banner(f):
 
 
 def clean(line):
-    """strip the prompt prefix that precedes a reply on the same line"""
     line = re.sub(r"\x1b\[[0-9;]*m", "", line)
     return re.sub(r"^(\s*[\u203a>]\s*)+", "", line.strip()).strip()
 
@@ -48,7 +38,7 @@ def strategies():
     try:
         BKZ.Param(block_size=40, strategies=BKZ.DEFAULT_STRATEGY)
         return BKZ.DEFAULT_STRATEGY
-    except Exception:       # strategy file missing in this fpylll build: use linear pruning
+    except Exception:
         out = []
         for bs in range(101):
             if bs <= 20:
@@ -77,7 +67,7 @@ def solve_xy(rows, p, X, Y, g, P, log, betas=(20, 30, 40, 45, 50, 55, 60), tmax=
         for r in range(A.nrows):
             if abs(A[r, m]) != W // 2:
                 continue
-            sgn = 1 if A[r, m] == -(W // 2) else -1       # row = v - T  when last coord is -W/2
+            sgn = 1 if A[r, m] == -(W // 2) else -1
             e = [sgn * A[r, i] for i in range(m)]
             if max(abs(v) for v in e) > W:
                 continue
@@ -86,7 +76,7 @@ def solve_xy(rows, p, X, Y, g, P, log, betas=(20, 30, 40, 45, 50, 55, 60), tmax=
             det = (-rows[0][0] * rows[1][1] + rows[1][0] * rows[0][1]) % p
             if det == 0:
                 continue
-            # [-c1_0 c2_0; -c1_1 c2_1][x;y] = d
+
             inv = pow(det, -1, p)
             x = (d[0] * rows[1][1] - d[1] * rows[0][1]) * inv % p
             y = (rows[1][0] * d[0] - rows[0][0] * d[1]) * inv % p

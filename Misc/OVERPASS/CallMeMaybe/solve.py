@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""call_me_maybe -- reference solver (black box, talks to the live service).
-
-  python3 solve.py HOST PORT [--quiet]
-
-Uses only vocab.json (from dist.zip, next to this script) and the network. Python 3 stdlib.
-Strategy (see writeup.md):
-  0. a few CHECKs to read the schema / allowlist / duplicate rule
-  1. group-test the vocabulary words to find which prompt word lifts each
-     structural token, then binary-split the winning groups
-  2. fit a linear score model per token from the step traces
-  3. plan word counts so the free string emits an exact token sequence,
-     verify, refit, replan (adaptive loop)
-  4. read the changelog -> hidden tool + vault index
-  5. emit the breakout sequence twice: vault index (part one), then the
-     retention key one level up via full-width dots (part two)
-"""
 import json
 import math
 import os
@@ -25,11 +9,11 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_vp = os.path.join(HERE, 'vocab.json')          # vocab.json comes from dist.zip, put it next to this script
+_vp = os.path.join(HERE, 'vocab.json')
 VOCAB = json.load(open(_vp, encoding='utf-8'))['tokens']
 TID = {t: i for i, t in enumerate(VOCAB)}
 CLOSER = '"}'
-STR_FIRST = 7                                  # 3 forced + fn slot + 3 forced
+STR_FIRST = 7
 WORDS = [t for t in VOCAB if re.match(r'^[a-z_.]+$', t)
          and t not in ('fn', 'path', 'read_doc', 'list_docs', 'export_report')]
 CONTENT = [t for t in VOCAB if not t.startswith('"') and t not in ('fn', 'path')
@@ -44,8 +28,6 @@ def say(*a):
         print(*a, flush=True)
 
 
-# ------------------------------------------------------------------- I/O ----
-
 ANSI = re.compile(rb'\x1b\[[0-9;]*[A-Za-z]')
 
 
@@ -54,7 +36,7 @@ class Remote:
         self.s = socket.create_connection((host, port), timeout=30)
         self.buf = b''
         self.queries = 0
-        self.log = []                              # (kind, sent, reply_lines)
+        self.log = []
         self.until_prompt()
         self.s.sendall(b'solver\n')
         self.until_prompt()
@@ -105,7 +87,6 @@ def parse_ask(lines):
 
 
 def rel_scores(trace):
-    """Scores of every visible string-slot token relative to the closer."""
     steps = trace[STR_FIRST:]
     Z = [None] * len(steps)
     if not steps or len(steps[-1]) < 2:
@@ -127,18 +108,14 @@ def rel_scores(trace):
 
 
 def emitted(call):
-    """Content tokens the string slot produced (from the trace argmaxes)."""
     return call
 
 
-# -------------------------------------------------------------- the model ---
-
 class Est:
-    """Per-token ridge fit: y_t = B_t + sum_w c_w W[w][t]."""
 
     def __init__(self):
-        self.obs = []                 # (counts, {tok: y}, floor)
-        self.prior = {}               # (w, t) -> prior weight
+        self.obs = []
+        self.prior = {}
         self.base = {}
         self.W = {}
 
@@ -227,8 +204,6 @@ def predict(base, W, counts):
 
 
 def _suppressors(W, u, drivers):
-    """Words with a negative weight on token u, strongest first, excluding
-    words we rely on as drivers (pumping those would re-raise their targets)."""
     used = {d for ds in drivers.values() for d in ds}
     cs = [(v, w) for w, d in W.items() for tt, v in d.items()
           if tt == u and v < -0.25 and w not in used]
@@ -258,7 +233,7 @@ def plan(base, W, target, drivers, margin=0.45, cap=16, tries=40, seed=1):
                     c[w] = c.get(w, 0) + max(1, math.ceil((need - s[t]) / g))
                     changed = True
                     s = scores(base, W, c)
-            # try to push any non-target token back under the floor
+
             bad = [u for u in s if u not in target and s[u] > -thr]
             for u in sorted(bad, key=lambda x: -s[x]):
                 for w, v in _suppressors(W, u, drivers):
@@ -279,13 +254,11 @@ def plan(base, W, target, drivers, margin=0.45, cap=16, tries=40, seed=1):
     return None
 
 
-# ----------------------------------------------------------------- solver ---
-
 class Solver:
     def __init__(self, io):
         self.io = io
         self.est = Est()
-        self.drivers = {}             # token -> [words]
+        self.drivers = {}
         self.stage_q = {}
 
     def mark(self, name):
@@ -297,7 +270,7 @@ class Solver:
         y, floor = self.est.add(counts, r)
         return r, y, floor
 
-    # stage 0 -- schema recon (static; would normally be done once)
+
     def recon(self):
         for js in ('{}', '{"fn":"x"}', '{"fn":"read_doc"}',
                    '{"fn":"read_doc","path":"a","z":1}',
@@ -306,7 +279,7 @@ class Solver:
             say('  CHECK', js, '->', [l.strip() for l in out][1])
         self.mark('recon')
 
-    # stage 1 -- find which word lifts which structural token
+
     def discover(self):
         r0, y0, f0 = self.ask({})
         self.y0, self.f0 = y0, f0
@@ -317,7 +290,7 @@ class Solver:
         for g in groups:
             c = {w: 2 for w in g}
             _, y, f = self.ask(c)
-            for w in g:                       # own-token priors
+            for w in g:
                 self.est.prior[(w, w)] = 1.6
             for t, v in y.items():
                 if t in NEED and self.rose(t, v):
@@ -354,7 +327,7 @@ class Solver:
             return v > self.y0[t] + 1.0
         return True
 
-    # stage 2/3 -- adaptive plan / verify loop
+
     def steer(self, target, label, max_iter=7):
         for t in target:
             if t in WORDS and t not in self.drivers:
@@ -374,7 +347,7 @@ class Solver:
                 return None
             r, y, f = self.ask(c)
             if f is not None:
-                # a target we cannot see sits somewhere below the visible floor
+
                 for t in target:
                     if t not in y:
                         y[t] = f - 0.3
@@ -435,7 +408,7 @@ def main():
         s = Solver(io)
         try:
             flag = s.run()
-        except Exception as e:          # this session's weights beat us: reconnect
+        except Exception as e:
             print(f'session {attempt}: gave up after {io.queries} queries ({type(e).__name__}); reconnecting')
             io.s.close()
             continue

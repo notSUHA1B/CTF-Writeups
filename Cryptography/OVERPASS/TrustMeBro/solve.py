@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
-"""Reference solver for TRUST ME BRO.   python3 solve.py HOST PORT [path/to/output.txt]   (needs pycryptodome, numpy)
-
-Model (see writeup.md):  for even K the relay's parity bit of (K*m mod n) is
-floor(K*r) mod 2 with r = m/n.  K = 2^(t+1)*h gives [frac(h*u_t) >= 1/2], u_t = 0.b_{t+1}b_{t+2}...
-(bits of r).  Lies are keyed per exact ciphertext (no averaging), so redundancy has to come from
-different h at the same scale t: the queries form a convolutional code over the bits of r.
-Stages: 1) calibrate the hidden q mod 16 inversion mask with known plaintexts,
-2) non-adaptive first pass, 3) forward-backward decoding, 4) spend the remaining budget only on
-uncertain positions, 5) verify pow(m,e,n)==c and decrypt.
-"""
 import hashlib, os, random, re, socket, sys
 import numpy as np
 from Crypto.Util.number import long_to_bytes
 
-# ---------------- forward-backward decoder for the convolutional code ----------------
-def G(x): 
+
+def G(x):
     f=np.floor(x); return f*0.5+np.maximum(0.0,(x-f)-0.5)
 def p1_table(W,h):
     w=np.arange(1<<W,dtype=np.float64); a=h*w/(1<<W); L=h/(1<<W)
@@ -24,14 +14,13 @@ class Dec:
         s.W=W; s.eps=eps; s.pool=pool
         s.P1={h:p1_table(W,h) for h in pool}
     def loglik(s,obs_t):
-        # obs_t: list of (h,bit) at scale t -> log P(obs | window) over 2^W windows
+
         m=np.zeros(1<<s.W); e=s.eps
         for h,b in obs_t:
             p=s.P1[h]*(1-e)+(1-s.P1[h])*e
             m+=np.log(p if b else 1-p)
         return m
     def posterior(s,obs,nbits):
-        """obs: dict t -> list[(h,bit)]. bits indexed 0..nbits-1 ; scale t covers bits t..t+W-1 (window oldest..newest)."""
         W=s.W; S=1<<(W-1)
         M=[None]*nbits
         for i in range(nbits):
@@ -46,8 +35,8 @@ class Dec:
             a=lse2(c[:S],c[S:]); a-=a.max(); alpha[i+1]=a
         beta=np.zeros((nbits+1,S),dtype=np.float32)
         for i in range(nbits-1,-1,-1):
-            c=M[i]+beta[i+1][wins&(S-1)]            # per window, to be summed over oldest bit? sum over windows with same prev state
-            # prev state = w>>1 ; two windows per prev state: w=2*sp+b
+            c=M[i]+beta[i+1][wins&(S-1)]
+
             c2=c.reshape(S,2)
             b_=lse2(c2[:,0],c2[:,1]); b_-=b_.max(); beta[i]=b_
         llr=np.zeros(nbits)
@@ -58,11 +47,10 @@ class Dec:
             llr[i]=(mo+np.log(np.exp(odd-mo).sum()))-(me+np.log(np.exp(even-me).sum()))
         return llr
 
-# ---------------- relay client + solver ----------------
 
 W = 14
 EPS = 0.15
-NB = 2052                       # bits of r = m/n to recover (n < 2^2047)
+NB = 2052
 POOL = [1, 5, 23, 61, 113, 201, 331, 419, 7, 47, 89, 157, 263, 383, 17, 71, 139, 223, 307, 449, 3, 29, 97, 181]
 R0 = 3
 CAL_PER_CLASS = 21
@@ -72,7 +60,6 @@ PROMPTS = ("\n  \u203a ".encode(), b"\n  > ")
 
 
 def read_banner(f):
-    """read the connect banner + plain data lines up to the first prompt (printed without newline)"""
     buf = b""
     while not _ANSI.sub(b"", buf).endswith(PROMPTS):
         ch = f.read(1)
@@ -83,7 +70,6 @@ def read_banner(f):
 
 
 def clean(line):
-    """strip the prompt prefix that precedes a reply on the same line"""
     line = re.sub(r"\x1b\[[0-9;]*m", "", line)
     return re.sub(r"^(\s*[\u203a>]\s*)+", "", line.strip()).strip()
 
@@ -102,7 +88,7 @@ class Relay:
         out = []
         for i in range(0, len(qs), chunk):
             part = qs[i:i + chunk]
-            # sendall: an unbuffered makefile().write() does a single send() and can drop the tail
+
             self.s.sendall(b"".join(b"%x\n" % q for q in part))
             for _ in part:
                 line = self.f.readline()
@@ -119,7 +105,7 @@ def solve(host, port, n, log=print):
     c = rl.c
     log(f"[*] budget {rl.budget}")
 
-    # stage 1: known-plaintext calibration of the q mod 16 inversion mask
+
     need = {k: [] for k in range(16)}
     plan = []
     while any(len(v) < CAL_PER_CLASS for v in need.values()):
@@ -135,7 +121,7 @@ def solve(host, port, n, log=print):
     L = {k: int(votes[k] > 0) for k in range(16)}
     log(f"[+] inversion mask learned from {len(plan)} queries: {sum(L.values())} of 16 classes inverted")
 
-    # stage 2-4: coded queries
+
     total_bits = NB + W - 1
     dec = Dec(W, EPS, POOL)
     obs = {t: [] for t in range(NB)}

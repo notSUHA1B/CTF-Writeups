@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
-"""Reference solver for LODESTAR.   python3 solve.py HOST PORT   (needs pycryptodome)
-
-For each channel the unknown is the block integer m < B = 2^2040 and the lossy oracle answers
-[ (f*m mod n) < B ]  (E2 = yes) for any multiplier f, flipped with probability 1/5.
-Instead of voting on single comparisons, Narrow keeps a Bayesian posterior over m (a list of
-intervals with weights), asks the multiplier whose answer is most informative about it and updates
-exactly -- this works unchanged for the 2048-bit key and for the legacy key with n < 2B, where
-the textbook interval-narrowing recipe does not apply.  Then: bespoke OAEP decode, OPEN, unseal.
-"""
 import hashlib, json, os, random, re, socket, sys, time, bisect, math
 from Crypto.Cipher import AES
 
-# ---------------- Bayesian narrowing of the Manger comb oracle (noisy) ----------------
 
 class Narrow:
     NMAX = 700; CAP_EVAL = 40; CAP = 40; SPLIT_W = 0.0; PRUNE_W = 1e-11; HEAVY_W = 1e-3
@@ -20,7 +10,7 @@ class Narrow:
         s.P = [[lo, hi if hi is not None else B, 1.0]]
         s.rng = rng or random.Random()
         s.q = 0
-    # ---- posterior helpers
+
     def quantile(s, p):
         acc = 0.0
         for lo, hi, w in s.P:
@@ -30,7 +20,6 @@ class Narrow:
             acc += w
         return s.P[-1][1] - 1
     def teeth(s, f, lo, hi, cap=3):
-        """accepted sub-intervals of [lo,hi) for multiplier f ; None if too many teeth"""
         n, B = s.n, s.B
         i0 = (f * lo) // n
         i1 = (f * (hi - 1)) // n
@@ -44,7 +33,6 @@ class Narrow:
                 out.append((a, b))
         return out
     def info_gain(s, f, core):
-        """expected information (bits) about which piece holds m"""
         n, B, eps = s.n, s.B, s.eps
         def H(q):
             return 0.0 if q <= 0 or q >= 1 else -(q * math.log2(q) + (1 - q) * math.log2(1 - q))
@@ -52,12 +40,12 @@ class Narrow:
         He = H(eps)
         for lo, hi, w in core:
             t = s.teeth(f, lo, hi, s.CAP_EVAL)
-            if t is None:                      # comb too fine to represent: carries no usable information
+            if t is None:
                 phi = B / n
                 qi = phi * (1 - eps) + (1 - phi) * eps
                 qbar += w * qi
                 cond += w * H(qi)
-            else:                              # exact: the answer is a noisy function of m itself
+            else:
                 phi = sum(b - a for a, b in t) / (hi - lo)
                 qbar += w * (phi * (1 - eps) + (1 - phi) * eps)
                 cond += w * He
@@ -132,7 +120,7 @@ class Narrow:
         mx = max(p[2] for p in new)
         P = [[a, b, w / tot] for a, b, w in new if w > s.PRUNE_W]
         P.sort(key=lambda p: p[0])
-        # bound the piece count: merge the lightest piece into its lighter adjacent neighbour (mass kept)
+
         while len(P) > s.NMAX:
             i = min(range(len(P)), key=lambda k: P[k][2])
             cand = []
@@ -149,7 +137,6 @@ class Narrow:
             del P[b]
         s.P = P
     def candidates(s, maxw=256):
-        """integers inside the heaviest pieces, if those pieces are narrow enough to try exhaustively"""
         out, acc, size = [], 0.0, 0
         for lo, hi, w in sorted(s.P, key=lambda p: -p[2]):
             size += hi - lo
@@ -180,7 +167,6 @@ def run(oracle, n, e, C, B, eps, maxq, rng=None, log=None, lo=1):
             log(nr.q, nr.quantile(0.001), nr.quantile(0.999), len(nr.P))
     return None, nr.q
 
-# ---------------- relay client + solver ----------------
 
 K, HLEN, B, EPS = 256, 32, 1 << 2040, 0.2
 LABEL = b"LODESTAR/startracker/v1"
@@ -211,7 +197,6 @@ PROMPTS = ("\n  \u203a ".encode(), b"\n  > ")
 
 
 def read_banner(f):
-    """read the connect banner up to the first prompt (printed without a newline)"""
     buf = b""
     while not _ANSI.sub(b"", buf).endswith(PROMPTS):
         ch = f.read(1)
@@ -221,7 +206,6 @@ def read_banner(f):
 
 
 def clean(line):
-    """strip the prompt prefix that precedes a reply on the same line"""
     line = re.sub(r"\x1b\[[0-9;]*m", "", line)
     return re.sub(r"^(\s*[\u203a>]\s*)+", "", line.strip()).strip()
 
